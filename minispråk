@@ -1,0 +1,763 @@
+#!/bin/python3
+
+
+#   ATT GÖRA:
+#   I   FUNKTIONER
+#   II  PRINT STRINGS
+#   III LÄGGA TILL JÄMFÖRELSER ('equ/==', '<', '>')
+#   IV  INPUT STÖRRE NUMMER
+
+
+import os, sys
+
+class colors:
+    reset='\033[0m'
+    bold='\033[01m'
+    disable='\033[02m'
+    underline='\033[04m'
+    reverse='\033[07m'
+    strikethrough='\033[09m'
+    invisible='\033[08m'
+    class fg:
+        black='\033[30m'
+        red='\033[31m'
+        green='\033[32m'
+        orange='\033[33m'
+        blue='\033[34m'
+        purple='\033[35m'
+        cyan='\033[36m'
+        lightgrey='\033[37m'
+        darkgrey='\033[90m'
+        lightred='\033[91m'
+        lightgreen='\033[92m'
+        yellow='\033[93m'
+        lightblue='\033[94m'
+        pink='\033[95m'
+        lightcyan='\033[96m'
+    class bg:
+        black='\033[40m'
+        red='\033[41m'
+        green='\033[42m'
+        orange='\033[43m'
+        blue='\033[44m'
+        purple='\033[45m'
+        cyan='\033[46m'
+        lightgrey='\033[47m'
+
+def cprint(fg_,message):
+    print(fg+message+colors.reset)
+def error_print(message):
+    print(colors.fg.black+colors.bg.red+message+colors.reset)
+
+compName='minispråk'
+
+_SIZE_=100_000
+inputfile=''
+outputfile='a.out'
+showDebug=False
+executeDirect=False
+userinputdata=False
+gcc=False
+
+help_=f"""Användning: {compName} [flaggor] fil...
+Flaggor:
+    -h              Visa den här informationen.
+    -d              Visa dokumentationen.
+    -o=<fil>        Välj utdatafil.
+    -v              Visa felsökningsinformation (debug).
+    -x              Exikvera direkt efter kompilering.
+    -c              Kompilera med 'gcc' (rekomenderat, tillåter mer funktionalitet).
+    -i              Kompilera från användarindata istället för från en fil.
+    
+Denna kompiler är menad för maskiner som kör x86_64 assembly."""
+documentation=f"""{colors.reset}Hur man skriver {compName}.
+
+VIKTIGT: När kompilern läser ett program från en fil skrivs koden avsedd att kompileras mellan en '{compName}_BEGIN' och en '{compName}_END' symbol. Kompilern ignorerar allt skrivet utanför dessa två.
+
+Alla instruktioner skrivs på varrandra utan skiljetecken, radslut (vilka ignoreras av kompilern). Reserverade ord och variabelnamn kräver däremot neutrala karaktärer likt mellanmellanslag, radslut eller andra symboler som inte ingår i det grekiska alfabetet för att bli igenkända av kompilern.
+
+Avsluta programmet:
+{colors.fg.yellow}
+    'exit'{colors.reset}
+    
+Deklarera en variabel:
+{colors.fg.yellow}
+    <variabelnamn> '=' <uttryck>{colors.reset}
+    
+Skriv ut ett heltal i terminalen (fungerar bättre med gcc):
+{colors.fg.yellow}
+    'print' <uttryck>{colors.reset}
+
+Få användarinmatning från 0-9 i uttryck (fungerar endast med gcc):
+{colors.fg.yellow}
+    'input'{colors.reset}
+
+"Om x gör y" block:
+{colors.fg.yellow}
+    'if' <uttryck> <kod> '.'{colors.reset}
+
+"Medan x gör y" block:
+{colors.fg.yellow}
+    'while' <uttryck> <kod> '.'{colors.reset}
+    
+Flagga:
+{colors.fg.yellow}
+    <flagga> ':'{colors.reset}
+    
+Hoppa till flagga:
+{colors.fg.yellow}
+    'goto' <flagga>{colors.reset}
+
+Kommentar:
+{colors.fg.yellow}
+    '#' ... '#'{colors.reset}
+    
+
+Exempel på ett program som skriver ut n siffror i Fibonacci's talföljd:
+{colors.fg.lightgreen}
+    {compName}_BEGIN
+
+    n=input
+    a=1 b=0
+    while n
+        print a
+        c=b b=a a=a+c
+    n=n-1.
+
+    {compName}_END{colors.reset}
+    
+"""
+
+def args():
+    global inputfile,outputfile,showDebug,executeDirect,userinputdata,gcc
+    for a in sys.argv:
+        a=str(a)
+        if a=='-h':
+            print(help_)
+            exit()
+        if a=='-d':
+            print(documentation)
+            exit()
+        elif a=='-x':executeDirect=True
+        elif a=='-v':showDebug=True
+        elif a=='-i':userinputdata=True
+        elif a=='-c':gcc=True
+        elif'-o='in a:outputfile=a[3:]
+        elif not compName in a:inputfile=a
+    if not len(inputfile)and not userinputdata:
+        error_print('Ingen indatafil, processen avbröts.')
+        print(help_)
+        exit()
+
+args()
+if userinputdata:Str=input(compName+'> ')
+else:
+    try:
+        s=open(inputfile,'r')
+        Str=s.read()
+    except:
+        print(f'Fil \'{inputfile}\' hittades inte i den här filen.')
+        exit()
+
+Tok=[]#tokens
+Ord=[]#order
+Ass=[]#assembly
+Asm=''#true assembly
+error=0
+a=0
+b=0
+for i in range(_SIZE_):
+    Tok.append('')
+    Ord.append('')
+
+STARTFLAG=f'{compName}_BEGIN'
+ENDFLAG=f'{compName}_END'
+RES=('true','false','if','while',
+    'else','for','var','print',
+    'input','exit','def','and',
+    'or','not','goto','return',
+    'equ',
+    STARTFLAG,ENDFLAG)
+DIV='+-*/()[]{}=\n\t!?~^# ,:.;&%|<>$@~£±\\'
+
+INS=(
+    ('print','EXPR'),
+    ('for','EXPR','(','CODE',')')
+    )
+
+
+def displ(arr):
+    for token in arr:
+        if token!='':print(token+' ',end='')
+    print()
+
+
+def lex():
+    global Tok
+    x=0
+    t=0
+    i=0
+    while i<len(Str):#98
+        t=0
+        if Str[i]!=' 'and Str[i]!='\n'and Str[i]!='\t':#101-103
+            for i_ in range(len(DIV)):#105
+                if Str[i]==DIV[i_]:#107
+                    x+=1
+                    Tok[x]+=Str[i]
+                    x+=1
+                    t=1
+            if (Str[i]=='\''or Str[i]=='\"')and i<len(Str)-2:#115
+                c=Str[i]
+                x+=1
+                Tok[x]=Str[i]
+                x+=1
+                i+=1
+                g=1
+                while g and i<len(Str):#122
+                    if Str[i]==c and Str[i-1]!='\\':
+                        g=0
+                        x+=1
+                        Tok[x]+=Str[i]
+                        x+=1
+                    elif Str[i]!='\\':Tok[x]+=Str[i]#131-132
+                    i+=1
+                t=1
+                i-=1
+            if not t:Tok[x]+=Str[i]#138-139
+        else:x+=1#141-142
+        i+=1
+    Tok[:]=(v for v in Tok if v!='')
+    for i in range(_SIZE_-len(Tok)):Tok.append('')
+
+def removeOutside():
+    global Tok
+    inside=False
+    newTok=[]
+    for i in range(_SIZE_):
+        if Tok[i]==ENDFLAG:inside=False
+        if inside:newTok.append(Tok[i])
+        if Tok[i]==STARTFLAG:inside=True
+
+    #'''
+    code=True#TA BORT KOMMENTARER
+    newerTok=[]
+    for i in range(len(newTok)):
+        if newTok[i]=='#':code=not code
+        if code and newTok[i]!='#':newerTok.append(newTok[i])    
+    
+    newerTok.append('')
+    Tok=newerTok
+
+def searchTokens(ts):
+    for i in range(len(Tok)):
+        for i_ in range(len(ts)):
+            if Tok[i+i_]!=ts[i_]:break
+            if i_==len(ts)-1:return True
+    return False
+
+def is_num(p):
+    try:
+        int(p)
+        return 1
+    except:return 0
+def is_var(p):
+    if not p in RES and not is_num(p)and not any(c in DIV for c in p)and len(p):return 1
+    return 0
+level_nest=-1
+nest=[]
+for i in range(int(_SIZE_/10)):
+    nest.append(-1)
+def syntax():
+    global error,Ord,a,b
+    a=0
+    b=0
+    def pop():
+        global a
+        a+=1
+    def push(t):
+        global b, Ord
+        b+=1
+        Ord[b]=t
+    def t():return Tok[a]   #current token
+    def f():return Tok[a+1] #future  token
+
+    def code():
+        global error
+        out=''
+
+        while len(t()):
+            if t()in DIV:return out
+            elif t()in('if','while','for','def'):out+=f'\nbloc({block()})'
+            else:out+=f'\nexpr({expression()})'
+            pop()
+
+        return out
+    def block():
+        global error,level_nest,nest
+        out=''
+        if t()in('if','while'):
+            s=t()
+            level_nest+=1
+            nest[level_nest]+=1
+            cords=''
+            for c in nest:
+                if c!=-1:
+                    cords+=f'_{c}'
+            if s=='while':push(f'cond_{s}{cords}')
+            pop()
+            n=numeric()
+            out+=f'{s}, numb({n}) '
+            pop()
+            if s=='while':push(s)
+            if s=='if':push('start_if'+cords)
+            #if t()!='(':
+            #    error=1
+            #    return colors.fg.red+'missing \'(\''+colors.reset
+            #pop()
+            out+=f'code({code()})'
+            if t()!='.':# ')'
+                error=1
+                return colors.fg.red+'missing \'.\''+colors.reset
+            push(f'end_{s}{cords}')
+            level_nest-=1
+        return out
+    def expression():
+        global error
+        out=''
+        if t()=='goto':
+            pop()
+            f=t()
+            if not is_var(f):
+                error=1
+                return colors.fg.red+'missing flag'+colors.reset
+            if not searchTokens((f,':')):
+                error=1
+                return colors.fg.red+'flag does not exist'+colors.reset
+            push('goto')
+            push(f)
+            return f'goto({f})'
+        if is_var(t()):
+            v=t()
+            pop()
+            if t()=='(':#function
+                pop()
+                out+=f'func({v}'
+                while t()!=')':
+                    out+=f', numb({numeric()})'
+                    pop()
+                push(v)
+                return f'{out})'
+            if t()=='=':
+                pop()
+                out+=f'decl({v} = numb({numeric()}))'
+                push(v)
+                push('=')
+                return out
+            if t()==':':#flag
+                push('flag')
+                push(v)
+                return f'flag({v})'
+        if t()=='print':
+            pop()
+            out+=f'print(numb({numeric()}))'
+            push('print')
+            return out
+        if t()=='exit':
+            push('exit')
+            return'exit'
+        error=1
+        return colors.fg.red+'Syntax Error'+colors.reset
+    def numeric():
+        return _num_or()
+    def _num_or():
+        global error
+        a1=_num_and()
+        out=f'{a1}'
+        while f()=='or':
+            pop()
+            o='+'
+            pop()
+            a2=_num_and()
+            push(o)
+            out+=f' {o} {a2}'
+        return out
+    def _num_and():
+        global error
+        c1=_num_comp()
+        out=f'{c1}'
+        while f()=='and':
+            pop()
+            o='*'
+            pop()
+            c2=_num_comp()
+            push(o)
+            out+=f' {o} {c2}'
+        return out
+    def _num_comp():
+        global error
+        e1=_num_expr()
+        out=f'{e1}'
+        while f()in('<','>'):
+            pop()
+            o=t()
+            pop()
+            e2=_num_expr()
+            push(o)
+            out+=f' {o} {e2}'
+        return out
+    def _num_expr():
+        global error
+        t1=_num_term()
+        out=f'{t1}'
+        while f()in('+','-'):
+            pop()
+            o=t()
+            pop()
+            t2=_num_term()
+            push(o)
+            out+=f' {o} {t2}'
+        return out
+    def _num_term():
+        global error
+        f1=_num_factor()
+        out=f'{f1}'
+        while f()in('*','/'):
+            pop()
+            o=t()
+            pop()
+            f2=_num_factor()
+            push(o)
+            out+=f' {o} {f2}'
+        return out
+    def _num_factor():
+        global error
+        if t()=='(':
+            pop()
+            e1=numeric()
+            pop()
+            if t()!=')':
+                error=1
+                return colors.fg.red+'missing \')\''+colors.reset
+            return f'{e1}'
+        if t()=='-' and is_num(f()):
+            pop()
+            n=t()
+            push(n)
+            return f'-{n}'
+        if is_num(t()):
+            n=t()
+            push(n)
+            return f'{n}'
+        if is_var(t()):
+            v=t()
+            push(v)
+            return f'var({v})'
+        if t()=='true':
+            push('1')
+            return '1'
+        if t()=='false':
+            push('0')
+            return '0'
+        if t()=='input':
+            push('input')
+            return 0
+        
+        error=1
+        return colors.fg.red+'Syntax Error'+colors.reset
+    return f'code({code()}\n)'
+
+'''
+def assemble():
+    global Ass, Asm
+    displ(Ord)
+    storage_section='section .data:'
+    main_procedure='global _start\nsection .text:\n_start:'
+
+    def memory_add(s):
+        global storage_section
+        storage_section+='\n\t'+s
+    def instruction_add(s):
+        global main_procedure
+        main_procedure+='\n\t'+s
+    def function_add(s):
+        global main_procedure
+        main_procedure+='\n'+s
+
+    for com in Ord:
+        if is_num(com):instruction_add('push '+com)
+    
+    Asm=mp+'\n'+ss
+    print(Asm)
+
+
+storage_section='DATA DIVISION.\nWORKING-STORAGE SECTION.'
+main_procedure='PROCEDURE DIVISION.'
+def pseudo_assembler():
+    global Ass, Asm
+    displ(Ord)
+
+    def inst(s):
+        global main_procedure
+        main_procedure+='\n\t'+s
+    def stor(s):
+        global storage_section
+        storage_section+='\n\t'+s
+
+    for com in Ord:
+        if is_num(com):inst('PUSH #'+com)
+    
+    Asm=storage_section+'\n\n'+main_procedure
+    print(Asm)
+'''
+
+def assemble():
+    
+    scratch=('r9','r10','r11')
+    bits=64
+    begin_flag='_start'
+    if gcc:
+        scratch=('eax','edx','ecx')
+        bits=32
+        begin_flag='main'
+
+    while_flag=''
+    bss=f"""
+segment .bss
+    uinp_len equ {bits}
+    uinp resb uinp_len
+"""
+    asm=f"""
+SYS_EXIT    equ 60
+SYS_READ    equ 0
+SYS_WRITE   equ 1
+STDIN       equ 0
+STDOUT      equ 1
+
+section .text
+global {begin_flag}
+extern printf
+extern getchar
+
+{begin_flag}:
+
+    ;   BEGIN PROCEDURE msg (
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, beginmsg
+    mov edx, blen
+    int 0x80
+    ;   )
+
+;//////////////////////////// PROGRAM START
+"""
+
+    for i in range(len(Ord)):
+        o=Ord[i]
+        if o=='exit':asm+="""
+    call exit;\t\t\tEXIT
+"""
+        elif o=='goto':
+            i+=1
+            asm+=f"""
+    jmp {Ord[i]};\t\t\tGOTO
+"""
+        elif o=='flag':
+            i+=1
+            asm+=f"""
+    {Ord[i]}:;\t\t\t\tFLAG
+"""
+        elif 'cond_while'in o:
+            while_flag=o[5:]
+            asm+=f"""
+{while_flag}:;\t\t\tWHILE BEGIN
+"""
+        elif o=='while':asm+=f"""
+    pop {scratch[0]};\t\t\tWHILE
+    cmp {scratch[0]}, 0
+    je end_{while_flag}
+"""
+        elif 'end_while'in o:
+            asm+=f"""
+    jmp {o[4:]};\t\tEND WHILE
+{o}:
+"""
+        elif 'start_if'in o:
+            asm+=f"""
+    pop {scratch[0]};\t\t\tIF
+    cmp {scratch[0]}, 0
+    je end_{o[6:]}
+"""
+        elif 'end_if'in o:asm+=f"""
+end_{o[4:]}:;\t\t\tEND IF
+"""
+        elif o=='input':
+            if gcc:asm+=f"""
+    call input;\t\t\tINPUT (gcc)
+    mov {scratch[0]}, [uinp]
+    sub {scratch[0]}, '0'
+    sub {scratch[0]}, 2560
+    push {scratch[0]}
+"""
+        elif o=='print':
+            if gcc:asm+="""
+    push printnum;\t\t\tPRINT (gcc)
+    call printf
+"""
+            else:asm+=f"""
+    pop {scratch[0]};\t\t\tPRINT
+    call print
+"""
+        elif is_var(o)and not Ord[i+1]in('=','.',':','('):asm+=f"""
+    mov {scratch[0]}, [{o}];\t\tPUSH VAR
+    push {scratch[0]}
+"""
+        elif o=='=':
+            name=Ord[i-1]
+            if not f' {name}\t'in bss:bss+=f"""
+    {name}\tresb {bits}
+"""
+            asm+=f"""
+    pop {scratch[0]};\t\t\tDEKLARERA VARIABEL
+    mov [{name}], {scratch[0]}
+"""
+        elif is_num(o):asm+=f"""
+    push {o};\t\t\tPUSH VALUE
+"""
+        elif o in('+','-','*','/'):
+            asm+=f"""
+    pop {scratch[0]};\t\t\tMATEMATISK OPERATION
+    pop {scratch[1]}"""
+            op={'+':'add','-':'sub','*':'mul','/':'div'}
+            ope=op.get(o)
+            if o in('+','-'):asm+=f"""
+    {ope} {scratch[1]}, {scratch[0]}
+    push {scratch[1]}
+"""
+            else:asm+=f"""
+    {ope} {scratch[1]}
+    push eax
+"""
+    asm+=f"""
+;//////////////////////////// PROGRAM END
+
+    call exit
+"""
+    if not gcc:asm+="""
+print:;                 PRINT FUNCTION
+    mov rsi, numc
+    add rsi, r9
+    mov rdx, 1
+    mov rdi, STDOUT
+    mov rax, SYS_WRITE
+    syscall
+
+    mov rsi, nl;        NEWLINE
+    mov rdx, nl_len
+    mov rdi, STDOUT
+    mov rax, SYS_WRITE
+    syscall
+
+    ret
+
+input:;                 INPUT FUNCTION
+    mov rdx, uinp_len
+    mov rsi, uinp
+    mov rdi, STDIN
+    mov rax, SYS_READ
+    syscall
+    ret
+"""
+    else:asm+=f"""
+input:;                 INPUT FUNCTION (gcc)
+    mov eax, 3
+    mov ebx, 0
+    mov ecx, uinp
+    mov edx, 2
+    int 80h
+    ret
+"""
+    if gcc:asm+="""
+exit:;                  EXIT FUNCTION (gcc)
+
+    ;   END PROCEDURE msg (
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, endmsg
+    mov edx, elen
+    int 0x80
+    ;   )
+
+    add esp, 8
+    ret
+    """
+    else:asm+="""
+exit:;                  EXIT FUNCTION
+
+    ;   END PROCEDURE msg (
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, endmsg
+    mov edx, elen
+    int 0x80
+    ;   )
+
+    mov rax, SYS_EXIT
+    mov rdi, 0
+    syscall
+    """
+
+    asm+="""
+
+segment .data
+    nl db "", 0xA, 0xD
+    nl_len equ $- nl
+    beginmsg db "BEGIN PROCEDURE", 0xA, 0xD
+    blen equ $- beginmsg
+    endmsg db "END PROCEDURE", 0xA, 0xD
+    elen equ $- endmsg
+
+    numc db "0123456789ABCDEF", 0xA, 0xD;   (non gcc print)
+    numclen equ $- numc
+
+    printnum db "%d", 10, 0;                (gcc print)
+    """
+    asm+=bss
+
+    global Asm
+    Asm=asm
+
+
+
+lex()
+if not userinputdata:removeOutside()
+if showDebug:displ(Tok)
+s=syntax()
+if showDebug:
+    print('error =',error)
+    print(s)
+    print('operationer: ',end='')
+    displ(Ord)
+
+if error:
+    print('syntax fel, procesen avbröts.')
+    exit()
+
+assemble()
+if showDebug:print(Asm)
+
+f=open(f'genererad_asm_{compName}.asm','w')
+f.write(Asm)
+f.close()
+
+if gcc:
+    if showDebug:print('[1] creating object file...')
+    os.system(f'nasm -f elf32 -o genererad_obj_{compName}.o genererad_asm_{compName}.asm')
+    if showDebug:print('[2] creating executable...')
+    os.system(f'gcc -m32 -o {outputfile} genererad_obj_{compName}.o')
+else:
+    if showDebug:print('[1] creating object file...')
+    os.system(f'nasm -f elf64 -o genererad_obj_{compName}.o genererad_asm_{compName}.asm')
+    if showDebug:print('[2] creating executable...')
+    os.system(f'ld -o {outputfile} genererad_obj_{compName}.o')
+
+if executeDirect:os.system(f'./{outputfile}')

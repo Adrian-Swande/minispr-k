@@ -61,8 +61,8 @@ gcc=False
 
 help_=f"""Användning: {compName} [flaggor] fil...
 Flaggor:
-    -h              Visa den här informationen.
-    -d              Visa dokumentationen.
+    -h              Visa denna information.
+    -d              Visa dokumentation.
     -o=<fil>        Välj utdatafil.
     -v              Visa felsökningsinformation (debug).
     -x              Exikvera direkt efter kompilering.
@@ -71,6 +71,8 @@ Flaggor:
     
 Denna kompiler är menad för maskiner som kör x86_64 assembly."""
 documentation=f"""{colors.reset}Hur man skriver {compName}.
+
+Fullständig dokumentation finns tillgänglig på http://webbem.se/elever/2021-22/adrswa03/
 
 VIKTIGT: När kompilern läser ett program från en fil skrivs koden avsedd att kompileras mellan en '{compName}_BEGIN' och en '{compName}_END' symbol. Kompilern ignorerar allt skrivet utanför dessa två.
 

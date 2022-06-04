@@ -69,14 +69,14 @@ Flaggor:
     -c              Kompilera med 'gcc' (rekomenderat, tillåter mer funktionalitet).
     -i              Kompilera från användarindata istället för från en fil.
     
-Denna kompiler är menad för maskiner som kör x86_64 assembly."""
+Denna kompilator är menad för maskiner som kör x86_64 assembly."""
 documentation=f"""{colors.reset}Hur man skriver {compName}.
 
 Fullständig dokumentation finns tillgänglig på http://webbem.se/elever/2021-22/adrswa03/
 
-VIKTIGT: När kompilern läser ett program från en fil skrivs koden avsedd att kompileras mellan en '{compName}_BEGIN' och en '{compName}_END' symbol. Kompilern ignorerar allt skrivet utanför dessa två.
+VIKTIGT: När kompilatorn läser ett program från en fil skrivs koden avsedd att kompileras mellan en '{compName}_BEGIN' och en '{compName}_END' symbol. Kompilatorn ignorerar allt skrivet utanför dessa två.
 
-Alla instruktioner skrivs på varrandra utan skiljetecken, radslut (vilka ignoreras av kompilern). Reserverade ord och variabelnamn kräver däremot neutrala karaktärer likt mellanmellanslag, radslut eller andra symboler som inte ingår i det grekiska alfabetet för att bli igenkända av kompilern.
+Alla instruktioner skrivs på varrandra utan skiljetecken, radslut (vilka ignoreras av kompilatorn). Reserverade ord och variabelnamn kräver däremot neutrala karaktärer likt mellanmellanslag, radslut eller andra symboler som inte ingår i det grekiska alfabetet för att bli igenkända av kompilatorn.
 
 Avsluta programmet:
 {colors.fg.yellow}
